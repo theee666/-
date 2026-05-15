@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>实时工资计算器</title>
+    <style>
+        *{margin:0;padding:0;box-sizing:border-box}
+        html,body{height:100%;overflow:hidden;scrollbar-width:none;-ms-overflow-style:none}
+        html::-webkit-scrollbar,body::-webkit-scrollbar{display:none}
+        body{
+            font-family:-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;
+            background:#0d0d0f;height:100vh;height:100dvh;
+            display:flex;align-items:center;justify-content:center;color:#fff;
+            padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        .app{
+            width:100%;max-width:420px;height:100vh;height:100dvh;
+            display:flex;flex-direction:column;justify-content:center;
+            padding:20px 22px;position:relative;overflow:hidden;
+        }
+        @media(min-width:500px){
+            body{background:linear-gradient(160deg,#0d0d0f 0%,#1a1a2e 100%)}
+            .app{height:auto;max-height:96vh;background:rgba(30,30,34,0.9);backdrop-filter:blur(24px);border-radius:28px;padding:32px;box-shadow:0 12px 48px rgba(0,0,0,0.6)}
+        }
+
+        /* Header */
+        .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+        .header-time{font-size:13px;color:rgba(255,255,255,0.4);font-variant-numeric:tabular-nums}
+        .header-actions{display:flex;gap:8px}
+        .icon-btn{
+            width:32px;height:32px;border-radius:10px;border:none;
+            background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.6);
+            font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;
+            transition:background 0.2s;-webkit-tap-highlight-color:transparent;
+        }
+        .icon-btn:active{background:rgba(255,255,255,0.15)}
+
+        /* Mode tabs */
+        .mode-tabs{display:flex;gap:4px;background:rgba(255,255,255,0.06);border-radius:10px;padding:3px;margin-bottom:18px}
+        .mode-tab{
+            flex:1;padding:7px 0;border-radius:8px;border:none;
+            font-size:12px;font-weight:500;color:rgba(255,255,255,0.45);
+            background:transparent;cursor:pointer;transition:all 0.2s;
+        }
+        .mode-tab.active{background:rgba(255,255,255,0.12);color:#fff}
+
+        /* Status cards */
+        .status-card{text-align:center;padding:30px 0;display:none}
+        .status-card.show{display:block}
+        .status-icon{font-size:44px;margin-bottom:12px}
+        .status-title{font-size:19px;font-weight:600;color:rgba(255,255,255,0.85);margin-bottom:8px}
+        .status-sub{font-size:14px;color:rgba(255,255,255,0.4);font-variant-numeric:tabular-nums}
+        .status-amount{font-size:36px;font-weight:700;color:#30d158;margin-top:12px}
+        .status-amount::before{content:'¥';font-size:22px;vertical-align:top;margin-right:2px}
+
+        /* Main display */
+        .main-panel{display:none;text-align:center}
+        .main-panel.show{display:block}
+        .main-label{font-size:12px;color:rgba(255,255,255,0.35);margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:6px}
+        .dot{width:6px;height:6px;border-radius:50%;background:#30d158;animation:pulse 1.5s infinite}
+        @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+        .main-amount{
+            font-size:54px;font-weight:700;color:#30d158;
+            font-variant-numeric:tabular-nums;letter-spacing:-2px;
+            cursor:pointer;transition:transform .15s;display:inline-block;
+            position:relative;user-select:none;
+        }
+        .main-amount::before{content:'¥';font-size:30px;font-weight:500;vertical-align:top;margin-right:2px}
+        .main-amount.tap{transform:scale(1.08)}
+        .float-tip{
+            position:absolute;top:-20px;left:50%;transform:translateX(-50%);
+            font-size:14px;color:#30d158;font-weight:600;opacity:0;
+            transition:all .6s ease;pointer-events:none;
+        }
+        .float-tip.show{opacity:1;top:-36px}
+
+        /* Mood tip area (replaces goal) */
+        .mood-section{margin-top:14px;padding:12px 16px;border-radius:14px;background:rgba(138,43,226,0.06);text-align:center;cursor:pointer;transition:background .3s}
+        .mood-section:active{background:rgba(138,43,226,0.12)}
+        .mood-section.hidden{display:none}
+        .mood-text{font-size:14px;color:rgba(255,255,255,0.7);line-height:1.5;transition:opacity .4s ease}
+        .mood-emoji{font-size:20px;margin-bottom:4px;transition:opacity .4s ease}
+        .mood-section.fading .mood-text,.mood-section.fading .mood-emoji{opacity:0}
+
+        /* Detail info */
+        .detail-section{margin-top:14px}
+        .detail-section.hidden{display:none}
+        .detail-row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid rgba(255,255,255,0.04)}
+        .detail-row:last-child{border:none}
+        .detail-label{font-size:12px;color:rgba(255,255,255,0.35)}
+        .detail-value{font-size:13px;color:rgba(255,255,255,0.7);font-weight:500;font-variant-numeric:tabular-nums}
+
+        /* Equivalents */
+        .equiv-section{margin-top:12px;padding:10px 14px;border-radius:12px;background:rgba(255,214,10,0.05);text-align:center}
+        .equiv-section.hidden{display:none}
+        .equiv-text{font-size:13px;color:rgba(255,214,10,0.8)}
+
+        /* Progress */
+        .progress-section{margin-top:16px}
+        .progress-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+        .progress-title{font-size:12px;color:rgba(255,255,255,0.35)}
+        .progress-pct{font-size:13px;font-weight:600;color:#30d158;font-variant-numeric:tabular-nums}
+        .progress-bar-bg{height:6px;background:rgba(255,255,255,0.08);border-radius:3px;overflow:hidden}
+        .progress-bar-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,#30d158,#34c759);transition:width .5s}
+        .progress-detail{font-size:11px;color:rgba(255,255,255,0.25);margin-top:6px;text-align:center}
+        .progress-detail.hidden{display:none}
+
+        /* Countdown */
+        .countdown{margin-top:10px;font-size:13px;color:rgba(255,149,0,0.8);text-align:center;font-variant-numeric:tabular-nums}
+
+        /* Motivational */
+        .moti-tip{margin-top:10px;padding:8px 12px;border-radius:10px;background:rgba(48,209,88,0.06);font-size:12px;color:rgba(255,255,255,0.5);text-align:center}
+        .moti-tip.hidden{display:none}
+        .moti-tip::before{content:'💡 '}
+
+        /* Motivate mode extras */
+        .motivate-mode .main-amount{color:#ff9f0a}
+        .motivate-mode .progress-bar-fill{background:linear-gradient(90deg,#ff9f0a,#ffcc00)}
+        .motivate-mode .dot{background:#ff9f0a}
+
+        /* Bottom bar */
+        .bottom-bar{display:flex;gap:8px;margin-top:18px;align-items:center}
+        .bottom-bar.hidden{display:none}
+        .bar-btn{
+            flex:1;padding:13px 0;border-radius:14px;border:none;
+            font-size:14px;font-weight:600;cursor:pointer;
+            transition:transform .1s;-webkit-tap-highlight-color:transparent;
+        }
+        .bar-btn:active{transform:scale(.96)}
+        .bar-btn.primary{background:#30d158;color:#fff}
+        .bar-btn.ghost{background:rgba(255,255,255,0.08);color:rgba(255,255,255,0.6)}
+        .bar-btn.danger{background:rgba(255,69,58,0.1);color:#ff453a}
+
+        /* Achievement popup */
+        .achievement{
+            position:fixed;top:60px;left:50%;transform:translateX(-50%) translateY(-20px);
+            background:rgba(40,40,44,0.95);backdrop-filter:blur(12px);
+            padding:12px 22px;border-radius:16px;font-size:15px;font-weight:600;
+            opacity:0;transition:all .4s ease;pointer-events:none;z-index:200;
+            box-shadow:0 8px 24px rgba(0,0,0,0.4);
+        }
+        .achievement.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+        /* Toast */
+        .toast{
+            position:fixed;bottom:50px;left:50%;transform:translateX(-50%) translateY(20px);
+            background:rgba(60,60,60,0.95);color:#fff;padding:12px 24px;
+            border-radius:14px;font-size:14px;opacity:0;
+            transition:opacity .3s,transform .3s;pointer-events:none;z-index:999;
+        }
+        .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+        /* Overlay */
+        .overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:100;align-items:flex-end;justify-content:center}
+        .overlay.show{display:flex}
+        .sheet{
+            width:100%;max-width:420px;background:#2c2c2e;border-radius:20px 20px 0 0;
+            padding:20px 22px 36px;max-height:85vh;overflow-y:auto;animation:slideUp .3s ease;
+        }
+        @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+        .sheet-handle{width:36px;height:4px;background:rgba(255,255,255,0.2);border-radius:2px;margin:0 auto 16px}
+        .sheet-title{font-size:17px;font-weight:600;text-align:center;margin-bottom:18px}
+        .input-group{margin-bottom:14px}
+        .input-group label{display:block;font-size:13px;color:rgba(255,255,255,0.5);margin-bottom:6px}
+        .input-group input{
+            width:100%;padding:12px 14px;border-radius:12px;border:none;
+            background:rgba(118,118,128,0.18);color:#fff;font-size:17px;outline:none;
+        }
+        .input-group input:focus{background:rgba(118,118,128,0.28)}
+        .input-group input[type="time"]{color-scheme:dark}
+        .input-group input::placeholder{color:rgba(255,255,255,0.2)}
+        .input-row{display:flex;gap:10px}
+        .input-row .input-group{flex:1}
+        .hint{font-size:12px;color:rgba(48,209,88,0.8);margin-top:8px;text-align:center;padding:6px;border-radius:8px;background:rgba(48,209,88,0.06)}
+        .err{color:#ff453a;font-size:12px;margin-top:4px;display:none}
+        .err.show{display:block}
+        .sheet-save{
+            width:100%;padding:14px;border-radius:14px;border:none;margin-top:14px;
+            font-size:16px;font-weight:600;cursor:pointer;background:#30d158;color:#fff;
+        }
+
+        /* Setup */
+        .setup{text-align:center;display:none}
+        .setup.show{display:block}
+        .setup-title{font-size:18px;font-weight:600;margin-bottom:18px;color:rgba(255,255,255,0.8)}
+    </style>
+</head>
+<body>
+<div class="app" id="app">
+    <!-- Header -->
+    <div class="header">
+        <div class="header-time" id="headerTime">00:00 周五</div>
+        <div class="header-actions">
+            <button class="icon-btn" id="btnMotivate" title="没动力了">😭</button>
+            <button class="icon-btn" id="btnEditOpen" title="编辑">⚙️</button>
+            <button class="icon-btn" id="btnShareTop" title="分享">📤</button>
+        </div>
+    </div>
+
+    <!-- Mode tabs -->
+    <div class="mode-tabs" id="modeTabs">
+        <button class="mode-tab active" data-mode="normal">正常</button>
+        <button class="mode-tab" data-mode="compact">简洁</button>
+        <button class="mode-tab" data-mode="motivate">激励</button>
+    </div>
+
+    <!-- Setup (first time) -->
+    <div class="setup" id="setupPanel">
+        <div class="setup-title">设置你的工资信息</div>
+        <div class="input-group"><label>月工资（元）</label><input type="number" id="sSetSalary" placeholder="请输入月工资"><div class="err" id="sSetErr">请输入月工资</div></div>
+        <div class="input-group"><label>每月工作天数</label><input type="number" id="sSetDays" value="22" placeholder="22"></div>
+        <div class="input-row">
+            <div class="input-group"><label>上班时间</label><input type="time" id="sSetStart" value="09:00"></div>
+            <div class="input-group"><label>下班时间</label><input type="time" id="sSetEnd" value="18:00"></div>
+        </div>
+        <div class="hint" id="sSetHint">今日工作时长：9 小时</div>
+        <div class="err" id="sSetTimeErr">下班时间必须晚于上班时间</div>
+        <button class="sheet-save" id="btnSetupGo">开始赚钱 💰</button>
+    </div>
+
+    <!-- Before work -->
+    <div class="status-card" id="sBefore">
+        <div class="status-icon">⏳</div>
+        <div class="status-title">还没开始赚钱</div>
+        <div class="status-sub" id="sBeforeSub">距离上班还有 --</div>
+    </div>
+
+    <!-- After work -->
+    <div class="status-card" id="sAfter">
+        <div class="status-icon">🎉</div>
+        <div class="status-title">今天已结束工作</div>
+        <div class="status-sub">今天一共赚了</div>
+        <div class="status-amount" id="sAfterAmt">0.00</div>
+    </div>
+
+    <!-- Working panel -->
+    <div class="main-panel" id="mainPanel">
+        <div class="main-label"><span class="dot"></span>正在赚钱中</div>
+        <div class="main-amount" id="mainAmt">0.00</div>
+        <div class="float-tip" id="floatTip">+¥0.01</div>
+
+        <div class="mood-section" id="moodSection">
+            <div class="mood-emoji" id="moodEmoji">💪</div>
+            <div class="mood-text" id="moodText">加油，今天也在努力赚钱</div>
+        </div>
+
+        <div class="detail-section" id="detailSection">
+            <div class="detail-row"><span class="detail-label">本周累计</span><span class="detail-value" id="dWeek">¥0</span></div>
+            <div class="detail-row"><span class="detail-label">本月累计</span><span class="detail-value" id="dMonth">¥0</span></div>
+            <div class="detail-row"><span class="detail-label">每秒收入</span><span class="detail-value" id="dPerSec">¥0</span></div>
+        </div>
+
+        <div class="equiv-section" id="equivSection" style="cursor:pointer">
+            <div class="equiv-text" id="equivText">相当于 0 杯奶茶</div>
+            <div style="font-size:10px;color:rgba(255,255,255,0.2);margin-top:4px">点击切换换算方式</div>
+        </div>
+
+        <div class="progress-section">
+            <div class="progress-header"><span class="progress-title">工作进度</span><span class="progress-pct" id="progPct">0%</span></div>
+            <div class="progress-bar-bg"><div class="progress-bar-fill" id="progBar" style="width:0%"></div></div>
+            <div class="progress-detail" id="progDetail">已工作 0 / 8 小时</div>
+        </div>
+        <div class="countdown" id="cdText">⏰ 还剩 --</div>
+        <div class="moti-tip" id="motiTip">加油 💪</div>
+    </div>
+
+    <!-- Bottom -->
+    <div class="bottom-bar hidden" id="bottomBar">
+        <button class="bar-btn danger" id="btnReset">重置</button>
+    </div>
+</div>
+
+<!-- Edit overlay -->
+<div class="overlay" id="overlay">
+    <div class="sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-title">编辑设置</div>
+        <div class="input-group"><label>月工资（元）</label><input type="number" id="eSlary" placeholder="月工资"><div class="err" id="eErr">请输入月工资</div></div>
+        <div class="input-group"><label>每月工作天数</label><input type="number" id="eDays" value="22"></div>
+        <div class="input-row">
+            <div class="input-group"><label>上班时间</label><input type="time" id="eStart" value="09:00"></div>
+            <div class="input-group"><label>下班时间</label><input type="time" id="eEnd" value="18:00"></div>
+        </div>
+        <div class="hint" id="eHint">今日工作时长：9 小时</div>
+        <div class="err" id="eTimeErr">下班时间必须晚于上班时间</div>
+        <button class="sheet-save" id="btnSheetSave">保存</button>
+    </div>
+</div>
+
+<div class="achievement" id="achPopup"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+const $=id=>document.getElementById(id);
+const STORE='salary_app_v3';
+const WEEK_DAYS=['周日','周一','周二','周三','周四','周五','周六'];
+
+// State
+let cfg={salary:'',days:'22',start:'09:00',end:'18:00'};
+let mode='normal'; // normal|compact|motivate
+let timer=null,perSec=0,totalWorkSec=0,startMin=0,endMin=0;
+let achievements={hundred:false,half:false,sprint:false};
+let moodLocked=false,lastMoodStage='';
+
+// Fade-in/out mood update
+function setMoodWithFade(emoji,text){
+    moodSection.classList.add('fading');
+    setTimeout(()=>{
+        moodEmoji.textContent=emoji;
+        moodText.textContent=text;
+        moodSection.classList.remove('fading');
+    },400);
+}
+function lockMood(ms){
+    moodLocked=true;
+    setTimeout(()=>{moodLocked=false},ms||3000);
+}
+
+// DOM refs
+const headerTime=$('headerTime'),mainAmt=$('mainAmt'),floatTip=$('floatTip');
+const setupPanel=$('setupPanel'),sBefore=$('sBefore'),sAfter=$('sAfter'),mainPanel=$('mainPanel');
+const sBeforeSub=$('sBeforeSub'),sAfterAmt=$('sAfterAmt');
+const moodSection=$('moodSection'),moodEmoji=$('moodEmoji'),moodText=$('moodText');
+const detailSection=$('detailSection'),dWeek=$('dWeek'),dMonth=$('dMonth'),dPerSec=$('dPerSec');
+const equivSection=$('equivSection'),equivText=$('equivText');
+const progPct=$('progPct'),progBar=$('progBar'),progDetail=$('progDetail');
+const cdText=$('cdText'),motiTip=$('motiTip');
+const bottomBar=$('bottomBar'),modeTabs=$('modeTabs');
+const overlay=$('overlay'),achPopup=$('achPopup'),toast=$('toast');
+
+// Utils
+function parseT(t){const p=t.split(':');return parseInt(p[0])*60+parseInt(p[1])}
+function fmtT(m){return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`}
+function fmtM(a){if(a>=10000)return a.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');if(a>=100)return a.toFixed(2);return a.toFixed(4)}
+function showToast(m){toast.textContent=m;toast.classList.add('show');setTimeout(()=>toast.classList.remove('show'),2200)}
+function showAch(m){achPopup.textContent=m;achPopup.classList.add('show');setTimeout(()=>achPopup.classList.remove('show'),3000)}
+
+// Duration hint
+function durationHint(sEl,eEl,hEl,errEl){
+    const s=sEl.value,e=eEl.value;
+    if(!s||!e){hEl.textContent='';errEl.classList.remove('show');return}
+    const sM=parseT(s),eM=parseT(e);
+    if(eM<=sM){hEl.textContent='';errEl.classList.add('show');return}
+    errEl.classList.remove('show');
+    const d=eM-sM,h=Math.floor(d/60),m=d%60;
+    hEl.textContent=m>0?`今日工作时长：${h} 小时 ${m} 分钟`:`今日工作时长：${h} 小时`;
+}
+
+// Clock
+function updateClock(){
+    const now=new Date();
+    headerTime.textContent=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')} ${WEEK_DAYS[now.getDay()]}`;
+}
+updateClock();setInterval(updateClock,1000);
+
+// Save/Load
+function save(){localStorage.setItem(STORE,JSON.stringify(cfg))}
+function load(){try{const r=localStorage.getItem(STORE);return r?JSON.parse(r):null}catch(e){return null}}
+
+// Apply config
+function apply(){
+    const salary=parseFloat(cfg.salary);
+    if(!salary||salary<=0)return false;
+    startMin=parseT(cfg.start);endMin=parseT(cfg.end);
+    if(endMin<=startMin)return false;
+    totalWorkSec=(endMin-startMin)*60;
+    const days=parseFloat(cfg.days)||22;
+    perSec=salary/(days*totalWorkSec);
+    return true;
+}
+
+// Equivalents
+let equivMode=0;
+const equivItems=[
+    {name:'奶茶',price:20,emoji:'☕',unit:'杯'},
+    {name:'外卖',price:30,emoji:'🍱',unit:'份'},
+    {name:'打车',price:50,emoji:'🚕',unit:'次'}
+];
+function calcEquiv(amount){
+    const item=equivItems[equivMode%equivItems.length];
+    const count=Math.floor(amount/item.price);
+    if(count<=0)return `还不够一${item.unit}${item.name}，继续加油 💪`;
+    const emojis=item.emoji.repeat(Math.min(count,8));
+    return `今天已经赚了相当于 ${count}${item.unit}${item.name} ${emojis}`;
+}
+equivSection.addEventListener('click',()=>{
+    equivMode=(equivMode+1)%equivItems.length;
+});
+
+// Week/Month estimate
+function getWeekEarned(){
+    const now=new Date(),dayOfWeek=now.getDay()||7;
+    const dailyMax=totalWorkSec*perSec;
+    return dailyMax*(dayOfWeek-1)+getTodayEarned();
+}
+function getMonthEarned(){
+    const now=new Date(),dayOfMonth=now.getDate();
+    const dailyMax=totalWorkSec*perSec;
+    return dailyMax*(dayOfMonth-1)+getTodayEarned();
+}
+function getTodayEarned(){
+    const now=new Date();
+    const nowS=(now.getHours()*60+now.getMinutes())*60+now.getSeconds();
+    const sS=startMin*60,eS=endMin*60;
+    if(nowS>=eS)return totalWorkSec*perSec;
+    if(nowS<=sS)return 0;
+    return (nowS-sS)*perSec;
+}
+
+// Mode
+function setMode(m){
+    mode=m;
+    document.querySelectorAll('.mode-tab').forEach(t=>t.classList.toggle('active',t.dataset.mode===m));
+    const app=$('app');
+    app.classList.remove('motivate-mode');
+    if(m==='motivate')app.classList.add('motivate-mode');
+
+    const compact=m==='compact';
+    detailSection.classList.toggle('hidden',compact);
+    equivSection.classList.toggle('hidden',compact);
+    progDetail.classList.toggle('hidden',compact);
+    motiTip.classList.toggle('hidden',compact);
+    moodSection.classList.toggle('hidden',compact);
+}
+
+// Main update
+function updateDisplay(){
+    const now=new Date();
+    const nowM=now.getHours()*60+now.getMinutes();
+    const nowS=nowM*60+now.getSeconds();
+    const sS=startMin*60,eS=endMin*60;
+
+    if(nowS<sS){
+        mainPanel.classList.remove('show');sAfter.classList.remove('show');sBefore.classList.add('show');
+        const d=sS-nowS;
+        sBeforeSub.textContent=`距离上班还有 ${Math.floor(d/3600)}小时${Math.floor((d%3600)/60)}分钟${d%60}秒`;
+        return;
+    }
+    if(nowS>=eS){
+        mainPanel.classList.remove('show');sBefore.classList.remove('show');sAfter.classList.add('show');
+        sAfterAmt.textContent=fmtM(totalWorkSec*perSec);
+        return;
+    }
+
+    sBefore.classList.remove('show');sAfter.classList.remove('show');mainPanel.classList.add('show');
+    const worked=nowS-sS;
+    const todayEarned=worked*perSec;
+
+    mainAmt.textContent=fmtM(todayEarned);
+
+    // Progress
+    const prog=Math.min((worked/totalWorkSec)*100,100);
+    progBar.style.width=prog.toFixed(1)+'%';
+    progPct.textContent=prog.toFixed(1)+'%';
+
+    if(mode!=='compact'){
+        const wH=Math.floor(worked/3600),wM=Math.floor((worked%3600)/60);
+        const tH=Math.floor(totalWorkSec/3600),tM=Math.floor((totalWorkSec%3600)/60);
+        progDetail.textContent=`已工作 ${wH}小时${wM}分钟 / ${tH}小时${tM>0?tM+'分钟':''}`;
+    }
+
+    // Countdown
+    const rem=eS-nowS;
+    cdText.textContent=`⏰ 还剩 ${Math.floor(rem/3600)}小时${Math.floor((rem%3600)/60)}分钟${rem%60}秒`;
+
+    // Detail
+    if(mode!=='compact'){
+        dWeek.textContent='¥'+fmtM(getWeekEarned());
+        dMonth.textContent='¥'+fmtM(getMonthEarned());
+        dPerSec.textContent='¥'+perSec.toFixed(4);
+        equivText.textContent=calcEquiv(todayEarned);
+    }
+
+    // Mood dynamic tip (with lock mechanism)
+    if(mode!=='compact' && !moodLocked){
+        const prog100=prog;
+        const remMin=Math.floor(rem/60);
+        // Determine current stage
+        let stage='early';
+        if(prog100>=80||remMin<60)stage='sprint';
+        else if(prog100>=50)stage='half';
+        else if(prog100>=20)stage='mid';
+
+        // Only update if stage changed
+        if(stage!==lastMoodStage){
+            lastMoodStage=stage;
+            let emoji='💪',text='加油，今天也在努力赚钱';
+            if(stage==='early'){
+                const tips=[['🌅','新的一天，开始搞钱'],['☀️','早起赚钱，比别人多赚一点'],['🚀','发动引擎，开始赚钱']];
+                const pick=tips[Math.floor(Math.random()*tips.length)];emoji=pick[0];text=pick[1];
+            }else if(stage==='mid'){
+                const tips=[['💪','节奏不错，保持住'],['📈','收入在稳步增长中'],['🎯','每一秒都在变富']];
+                const pick=tips[Math.floor(Math.random()*tips.length)];emoji=pick[0];text=pick[1];
+            }else if(stage==='half'){
+                const tips=[['🔥','已经过半了，这波稳了'],['⚡','剩下的都是赚的'],['🏃','下半场开始，冲']];
+                const pick=tips[Math.floor(Math.random()*tips.length)];emoji=pick[0];text=pick[1];
+            }else if(stage==='sprint'){
+                const tips=[['🏁','冲刺阶段！马上下班'],['🎉','再坚持一下就自由了'],['🍻','今天已经很不错了']];
+                const pick=tips[Math.floor(Math.random()*tips.length)];emoji=pick[0];text=pick[1];
+            }
+            setMoodWithFade(emoji,text);
+        }
+    }
+
+    // Motivational tip (bottom, also stage-locked)
+    if(mode==='motivate' && !moodLocked){
+        const mid=startMin+(endMin-startMin)/2;
+        if(nowM<mid-60)motiTip.textContent='早起的鸟儿有虫吃，冲！💪';
+        else if(nowM<mid+30)motiTip.textContent='已经过半了，你很棒！🔥';
+        else if(rem<3600)motiTip.textContent='最后冲刺！马上下班！🏃';
+        else motiTip.textContent='再坚持一下，奶茶在等你 🧋';
+    }else if(mode==='normal' && !moodLocked){
+        const mid=startMin+(endMin-startMin)/2;
+        if(nowM<mid-60)motiTip.textContent='加油，刚开始赚钱 💪';
+        else if(nowM<mid+60)motiTip.textContent='已经过半了，继续保持 ☕';
+        else motiTip.textContent='再坚持一下就下班 🏠';
+    }
+
+    // Achievements
+    if(!achievements.hundred && todayEarned>=100){achievements.hundred=true;showAch('🎉 今日破百！')}
+    if(!achievements.half && prog>=50){achievements.half=true;showAch('🔥 已过半！')}
+    if(!achievements.sprint && rem<3600 && rem>0){achievements.sprint=true;showAch('⏳ 冲刺阶段！')}
+}
+
+// Start
+function startApp(){
+    if(!apply())return;
+    setupPanel.classList.remove('show');
+    bottomBar.classList.remove('hidden');
+    modeTabs.style.display='flex';
+    setMode(mode);
+    if(timer)clearInterval(timer);
+    updateDisplay();
+    timer=setInterval(updateDisplay,200);
+    achievements={hundred:false,half:false,sprint:false};
+}
+
+// Tap interaction
+mainAmt.addEventListener('click',()=>{
+    mainAmt.classList.add('tap');
+    floatTip.textContent=`+¥${perSec.toFixed(4)}`;
+    floatTip.classList.add('show');
+    setTimeout(()=>{mainAmt.classList.remove('tap');floatTip.classList.remove('show')},600);
+});
+
+// Bump
+let bumpI=null;
+function startBump(){
+    if(bumpI)clearInterval(bumpI);
+    bumpI=setInterval(()=>{mainAmt.classList.add('tap');setTimeout(()=>mainAmt.classList.remove('tap'),150)},2000);
+}
+
+// Mode tabs
+modeTabs.addEventListener('click',e=>{
+    const tab=e.target.closest('.mode-tab');
+    if(!tab)return;
+    setMode(tab.dataset.mode);
+});
+
+// Motivate button & mood click
+const motivateQuotes=[
+    ['😤','再坚持一下就下班'],['💪','已经超过一半了'],['⭐','今天也很努力了'],
+    ['🧋','再赚一点就可以买奶茶'],['🔥','你比昨天更强了'],['�','摸鱼一分钟也在赚钱'],
+    ['🎮','下班后的快乐在等你'],['💰','这波已经赚到了'],['🍜','够吃一顿好的了'],
+    ['�️','周末在向你招手'],['🎵','听首歌，钱照赚']
+];
+function randomMotivate(){
+    const q=motivateQuotes[Math.floor(Math.random()*motivateQuotes.length)];
+    moodEmoji.textContent=q[0];
+    moodText.textContent=q[1];
+    showAch(q[0]+' '+q[1]);
+}
+$('btnMotivate').addEventListener('click',randomMotivate);
+moodSection.addEventListener('click',randomMotivate);
+
+// Edit
+$('btnEditOpen').addEventListener('click',()=>{
+    $('eSlary').value=cfg.salary;$('eDays').value=cfg.days;
+    $('eStart').value=cfg.start;$('eEnd').value=cfg.end;
+    durationHint($('eStart'),$('eEnd'),$('eHint'),$('eTimeErr'));
+    overlay.classList.add('show');
+});
+overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.classList.remove('show')});
+$('eStart').addEventListener('change',()=>durationHint($('eStart'),$('eEnd'),$('eHint'),$('eTimeErr')));
+$('eEnd').addEventListener('change',()=>durationHint($('eStart'),$('eEnd'),$('eHint'),$('eTimeErr')));
+$('btnSheetSave').addEventListener('click',()=>{
+    const sal=parseFloat($('eSlary').value);
+    if(!sal||sal<=0){$('eErr').classList.add('show');return}
+    $('eErr').classList.remove('show');
+    const ws=$('eStart').value,we=$('eEnd').value;
+    if(!ws||!we){showToast('请选择时间');return}
+    if(parseT(we)<=parseT(ws)){$('eTimeErr').classList.add('show');return}
+    $('eTimeErr').classList.remove('show');
+    cfg.salary=$('eSlary').value;cfg.days=$('eDays').value||'22';
+    cfg.start=ws;cfg.end=we;
+    save();overlay.classList.remove('show');startApp();startBump();
+    showToast('已保存 ✓');
+});
+
+// Setup
+$('sSetStart').addEventListener('change',()=>durationHint($('sSetStart'),$('sSetEnd'),$('sSetHint'),$('sSetTimeErr')));
+$('sSetEnd').addEventListener('change',()=>durationHint($('sSetStart'),$('sSetEnd'),$('sSetHint'),$('sSetTimeErr')));
+$('btnSetupGo').addEventListener('click',()=>{
+    const sal=parseFloat($('sSetSalary').value);
+    if(!sal||sal<=0){$('sSetErr').classList.add('show');$('sSetSalary').focus();return}
+    $('sSetErr').classList.remove('show');
+    const ws=$('sSetStart').value,we=$('sSetEnd').value;
+    if(!ws||!we){showToast('请选择时间');return}
+    if(parseT(we)<=parseT(ws)){$('sSetTimeErr').classList.add('show');return}
+    $('sSetTimeErr').classList.remove('show');
+    cfg.salary=$('sSetSalary').value;cfg.days=$('sSetDays').value||'22';
+    cfg.start=ws;cfg.end=we;
+    save();startApp();startBump();
+});
+
+// Share
+$('btnShareTop').addEventListener('click',()=>{
+    const now=new Date();
+    const dateStr=`${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${WEEK_DAYS[now.getDay()]}`;
+    const todayAmt=fmtM(getTodayEarned());
+    const text=`📊 今日打工进度播报\n📅 ${dateStr}\n💰 今天已赚：¥${todayAmt}\n⏱️ 每秒收入：¥${perSec.toFixed(4)}\n—— 来自「实时工资计算器」`;
+    if(navigator.clipboard){navigator.clipboard.writeText(text).then(()=>showToast('已复制，可以发给朋友了 😎'))}
+    else{const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);showToast('已复制，可以发给朋友了 😎')}
+});
+
+// Reset
+$('btnReset').addEventListener('click',()=>{
+    if(timer){clearInterval(timer);timer=null}
+    if(bumpI){clearInterval(bumpI);bumpI=null}
+    localStorage.removeItem(STORE);
+    mainPanel.classList.remove('show');sBefore.classList.remove('show');sAfter.classList.remove('show');
+    bottomBar.classList.add('hidden');modeTabs.style.display='none';
+    setupPanel.classList.add('show');
+    cfg={salary:'',days:'22',start:'09:00',end:'18:00'};
+    $('sSetSalary').value='';$('sSetDays').value='22';$('sSetStart').value='09:00';$('sSetEnd').value='18:00';
+    durationHint($('sSetStart'),$('sSetEnd'),$('sSetHint'),$('sSetTimeErr'));
+});
+
+// Init
+const saved=load();
+if(saved&&saved.salary){
+    cfg=saved;modeTabs.style.display='flex';startApp();startBump();
+}else{
+    setupPanel.classList.add('show');modeTabs.style.display='none';
+    durationHint($('sSetStart'),$('sSetEnd'),$('sSetHint'),$('sSetTimeErr'));
+}
+})();
+</script>
+</body>
+</html>
