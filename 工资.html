@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>实时工资计算器</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; overflow: hidden; scrollbar-width: none; -ms-overflow-style: none; }
+        html::-webkit-scrollbar, body::-webkit-scrollbar { display: none; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'Helvetica Neue', sans-serif;
+            background: #1c1c1e; height: 100vh; height: 100dvh;
+            display: flex; align-items: center; justify-content: center; color: #fff;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+        }
+        .widget {
+            width: 100%; max-width: 420px; height: 100vh; height: 100dvh;
+            display: flex; flex-direction: column; justify-content: center;
+            padding: 24px; background: #1c1c1e; position: relative;
+        }
+        @media (min-width: 500px) {
+            body { background: linear-gradient(135deg, #1c1c1e 0%, #2c2c2e 100%); }
+            .widget {
+                height: auto; max-height: 96vh; background: rgba(44,44,46,0.8);
+                backdrop-filter: blur(20px); border-radius: 28px; padding: 36px 32px;
+                box-shadow: 0 8px 40px rgba(0,0,0,0.5);
+            }
+        }
+        .time-header { text-align: center; margin-bottom: 20px; }
+        .current-time { font-size: 42px; font-weight: 200; font-variant-numeric: tabular-nums; letter-spacing: 2px; color: rgba(255,255,255,0.92); }
+        .current-date { font-size: 15px; color: rgba(255,255,255,0.4); margin-top: 4px; }
+
+        /* 主显示区 */
+        .main-display { text-align: center; padding: 16px 0; }
+        .earning-label { font-size: 14px; color: rgba(255,255,255,0.45); margin-bottom: 10px; }
+        .earning-amount {
+            font-size: 52px; font-weight: 700; color: #30d158;
+            font-variant-numeric: tabular-nums; letter-spacing: -1.5px;
+            transition: transform 0.15s ease; display: inline-block;
+        }
+        .earning-amount::before { content: '¥'; font-size: 32px; font-weight: 500; vertical-align: top; margin-right: 2px; }
+        .earning-amount.bump { transform: scale(1.05); }
+
+        /* 详细信息（详细模式可见） */
+        .detail-info { margin-top: 14px; }
+        .detail-info.hidden { display: none; }
+        .today-earning { padding-top: 14px; border-top: 1px solid rgba(255,255,255,0.06); text-align: center; }
+        .today-label { font-size: 13px; color: rgba(255,255,255,0.35); }
+        .today-amount {
+            font-size: 26px; font-weight: 600; color: #0a84ff; margin-top: 4px;
+            font-variant-numeric: tabular-nums; transition: transform 0.15s ease; display: inline-block;
+        }
+        .today-amount::before { content: '¥'; font-size: 16px; font-weight: 500; vertical-align: top; margin-right: 2px; }
+        .today-amount.bump { transform: scale(1.04); }
+        .per-second { font-size: 12px; color: rgba(255,255,255,0.25); margin-top: 6px; text-align: center; }
+        .fun-fact { margin-top: 12px; padding: 10px 14px; border-radius: 14px; background: rgba(255,214,10,0.06); text-align: center; }
+        .fun-fact-rate { font-size: 13px; color: rgba(255,255,255,0.5); font-variant-numeric: tabular-nums; }
+        .fun-fact-equiv { font-size: 12px; color: rgba(255,214,10,0.8); margin-top: 3px; }
+
+        /* 进度条（始终可见） */
+        .progress-section { margin-top: 20px; }
+        .progress-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .progress-title { font-size: 13px; color: rgba(255,255,255,0.4); }
+        .progress-percent { font-size: 14px; font-weight: 600; color: #30d158; font-variant-numeric: tabular-nums; }
+        .progress-bar-bg { width: 100%; height: 6px; background: rgba(118,118,128,0.15); border-radius: 3px; overflow: hidden; }
+        .progress-bar-fill {
+            height: 100%; border-radius: 3px;
+            background: linear-gradient(90deg, #30d158, #34c759, #30d158);
+            background-size: 200% 100%; transition: width 0.5s ease; animation: shimmer 2s infinite linear;
+        }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+        .progress-detail { font-size: 11px; color: rgba(255,255,255,0.3); margin-top: 6px; text-align: center; }
+        .progress-detail.hidden { display: none; }
+
+        /* 倒计时 */
+        .countdown { margin-top: 10px; font-size: 14px; color: rgba(255,149,0,0.85); text-align: center; font-variant-numeric: tabular-nums; }
+
+        /* 提示语（详细模式） */
+        .motivational-tip {
+            margin-top: 12px; padding: 8px 14px; border-radius: 12px;
+            background: rgba(48,209,88,0.08); font-size: 13px; color: rgba(255,255,255,0.6); text-align: center;
+        }
+        .motivational-tip::before { content: '💡 '; }
+        .motivational-tip.hidden { display: none; }
+
+        /* 状态卡片 */
+        .status-card { text-align: center; padding: 32px 0; display: none; }
+        .status-card.show { display: block; }
+        .status-card-icon { font-size: 48px; margin-bottom: 14px; }
+        .status-card-title { font-size: 20px; font-weight: 600; color: rgba(255,255,255,0.85); margin-bottom: 8px; }
+        .status-card-sub { font-size: 15px; color: rgba(255,255,255,0.4); font-variant-numeric: tabular-nums; }
+        .status-card-amount { font-size: 34px; font-weight: 700; color: #30d158; margin-top: 12px; }
+        .status-card-amount::before { content: '¥'; font-size: 22px; font-weight: 500; vertical-align: top; margin-right: 2px; }
+
+        /* 工作中面板（隐藏/显示） */
+        .working-panel { display: none; }
+        .working-panel.show { display: block; }
+
+        /* 底部工具栏 */
+        .toolbar { display: flex; gap: 8px; margin-top: 20px; align-items: center; }
+        .toolbar-btn {
+            flex: 1; padding: 14px 0; border-radius: 14px; border: none;
+            font-size: 15px; font-weight: 600; cursor: pointer;
+            transition: transform 0.1s; -webkit-tap-highlight-color: transparent;
+        }
+        .toolbar-btn:active { transform: scale(0.96); }
+        .btn-edit { background: rgba(118,118,128,0.18); color: rgba(255,255,255,0.7); }
+        .btn-mode { background: rgba(10,132,255,0.12); color: #0a84ff; font-size: 13px; padding: 10px 14px; border-radius: 12px; }
+        .btn-share { background: rgba(10,132,255,0.12); color: #0a84ff; font-size: 13px; padding: 10px 14px; border-radius: 12px; }
+        .btn-reset { background: rgba(255,69,58,0.12); color: #ff453a; }
+
+        /* 首次设置面板 */
+        .setup-panel { text-align: center; }
+        .setup-panel .setup-title { font-size: 18px; font-weight: 600; margin-bottom: 20px; color: rgba(255,255,255,0.8); }
+
+        /* 弹出设置面板 */
+        .overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100; align-items: flex-end; justify-content: center; }
+        .overlay.show { display: flex; }
+        .settings-sheet {
+            width: 100%; max-width: 420px; background: #2c2c2e; border-radius: 20px 20px 0 0;
+            padding: 24px 24px 40px; max-height: 80vh; overflow-y: auto;
+            animation: slideUp 0.3s ease;
+        }
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        .sheet-handle { width: 36px; height: 4px; background: rgba(255,255,255,0.2); border-radius: 2px; margin: 0 auto 20px; }
+        .sheet-title { font-size: 17px; font-weight: 600; text-align: center; margin-bottom: 20px; }
+        .input-group { margin-bottom: 16px; }
+        .input-group label { display: block; font-size: 14px; color: rgba(255,255,255,0.55); margin-bottom: 8px; }
+        .input-group input {
+            width: 100%; padding: 14px 16px; border-radius: 14px; border: none;
+            background: rgba(118,118,128,0.18); color: #fff; font-size: 18px; outline: none;
+        }
+        .input-group input:focus { background: rgba(118,118,128,0.28); }
+        .input-group input[type="time"] { color-scheme: dark; }
+        .input-group input::placeholder { color: rgba(255,255,255,0.25); }
+        .input-row { display: flex; gap: 12px; }
+        .input-row .input-group { flex: 1; }
+        .work-duration-hint {
+            font-size: 13px; color: rgba(48,209,88,0.85); margin-top: 10px; text-align: center;
+            padding: 8px 12px; border-radius: 10px; background: rgba(48,209,88,0.08);
+        }
+        .error-msg { color: #ff453a; font-size: 13px; margin-top: 6px; display: none; }
+        .error-msg.show { display: block; }
+        .sheet-btn {
+            width: 100%; padding: 16px; border-radius: 14px; border: none; margin-top: 16px;
+            font-size: 17px; font-weight: 600; cursor: pointer; background: #30d158; color: #fff;
+        }
+        .sheet-btn:active { transform: scale(0.97); }
+
+        .status-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #30d158; margin-right: 6px; animation: pulse 1.5s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+        .toast {
+            position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%) translateY(20px);
+            background: rgba(60,60,60,0.95); color: #fff; padding: 12px 24px;
+            border-radius: 14px; font-size: 15px; opacity: 0;
+            transition: opacity 0.3s, transform 0.3s; pointer-events: none; z-index: 999;
+        }
+        .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    </style>
+</head>
+<body>
+    <div class="widget">
+        <div class="time-header">
+            <div class="current-time" id="currentTime">00:00:00</div>
+            <div class="current-date" id="currentDate">加载中...</div>
+        </div>
+
+        <!-- 首次设置（无保存数据时显示） -->
+        <div class="setup-panel" id="setupPanel" style="display:none">
+            <div class="setup-title">设置你的工资信息</div>
+            <div class="input-group">
+                <label>月工资（元）</label>
+                <input type="number" id="salarySetup" placeholder="请输入月工资" min="0">
+                <div class="error-msg" id="errorMsgSetup">请输入月工资</div>
+            </div>
+            <div class="input-group">
+                <label>每月工作天数</label>
+                <input type="number" id="daysSetup" placeholder="默认 22" min="1" max="31" value="22">
+            </div>
+            <div class="input-row">
+                <div class="input-group">
+                    <label>上班时间</label>
+                    <input type="time" id="workStartSetup" value="09:00">
+                </div>
+                <div class="input-group">
+                    <label>下班时间</label>
+                    <input type="time" id="workEndSetup" value="18:00">
+                </div>
+            </div>
+            <div class="work-duration-hint" id="durationHintSetup">今日工作时长：9 小时</div>
+            <div class="error-msg" id="timeErrorSetup">下班时间必须晚于上班时间</div>
+            <button class="sheet-btn" id="btnSetupSave">开始赚钱</button>
+        </div>
+
+        <!-- 未上班状态 -->
+        <div class="status-card" id="statusBefore">
+            <div class="status-card-icon">🌅</div>
+            <div class="status-card-title">还没开始上班</div>
+            <div class="status-card-sub" id="beforeCountdown">距离开始赚钱还有 --</div>
+        </div>
+
+        <!-- 已下班状态 -->
+        <div class="status-card" id="statusAfter">
+            <div class="status-card-icon">🎉</div>
+            <div class="status-card-title">今天已结束工作</div>
+            <div class="status-card-sub">今天一共赚了</div>
+            <div class="status-card-amount" id="afterEarning">0.00</div>
+        </div>
+
+        <!-- 工作中面板 -->
+        <div class="working-panel" id="workingPanel">
+            <div class="main-display">
+                <div class="earning-label"><span class="status-dot"></span>正在赚钱中...</div>
+                <div class="earning-amount" id="currentEarning">0.00</div>
+            </div>
+
+            <div class="detail-info" id="detailInfo">
+                <div class="today-earning">
+                    <div class="today-label">今天已赚</div>
+                    <div class="today-amount" id="todayEarning">0.00</div>
+                </div>
+                <div class="per-second" id="perSecond">每秒赚 ¥0.0000</div>
+                <div class="fun-fact">
+                    <div class="fun-fact-rate" id="funFactRate">这一分钟赚了 ¥0.00</div>
+                    <div class="fun-fact-equiv" id="funFactEquiv">约等于 1 小口奶茶 ☕</div>
+                </div>
+            </div>
+
+            <div class="progress-section">
+                <div class="progress-header">
+                    <span class="progress-title">今日工作进度</span>
+                    <span class="progress-percent" id="progressPercent">0%</span>
+                </div>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" id="progressBar" style="width: 0%"></div>
+                </div>
+                <div class="progress-detail" id="progressDetail">已工作 0 / 8 小时</div>
+                <div class="countdown" id="countdown">⏰ 还剩 --</div>
+                <div class="motivational-tip" id="motivationalTip"></div>
+            </div>
+        </div>
+
+        <!-- 底部工具栏（运行后显示） -->
+        <div class="toolbar" id="toolbar" style="display:none">
+            <button class="toolbar-btn btn-edit" id="btnEdit">⚙️ 编辑</button>
+            <button class="toolbar-btn btn-mode" id="btnMode">简洁</button>
+            <button class="toolbar-btn btn-share" id="btnShare">📤</button>
+            <button class="toolbar-btn btn-reset" id="btnReset">重置</button>
+        </div>
+    </div>
+
+    <!-- 设置弹出层 -->
+    <div class="overlay" id="overlay">
+        <div class="settings-sheet" id="settingsSheet">
+            <div class="sheet-handle"></div>
+            <div class="sheet-title">设置</div>
+            <div class="input-group">
+                <label>月工资（元）</label>
+                <input type="number" id="salaryEdit" placeholder="请输入月工资" min="0">
+                <div class="error-msg" id="errorMsgEdit">请输入月工资</div>
+            </div>
+            <div class="input-group">
+                <label>每月工作天数</label>
+                <input type="number" id="daysEdit" placeholder="默认 22" min="1" max="31" value="22">
+            </div>
+            <div class="input-row">
+                <div class="input-group">
+                    <label>上班时间</label>
+                    <input type="time" id="workStartEdit" value="09:00">
+                </div>
+                <div class="input-group">
+                    <label>下班时间</label>
+                    <input type="time" id="workEndEdit" value="18:00">
+                </div>
+            </div>
+            <div class="work-duration-hint" id="durationHintEdit">今日工作时长：9 小时</div>
+            <div class="error-msg" id="timeErrorEdit">下班时间必须晚于上班时间</div>
+            <button class="sheet-btn" id="btnSheetSave">保存</button>
+        </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+    (function() {
+        // DOM
+        const currentTimeEl = document.getElementById('currentTime');
+        const currentDateEl = document.getElementById('currentDate');
+        const setupPanel = document.getElementById('setupPanel');
+        const statusBefore = document.getElementById('statusBefore');
+        const statusAfter = document.getElementById('statusAfter');
+        const workingPanel = document.getElementById('workingPanel');
+        const beforeCountdown = document.getElementById('beforeCountdown');
+        const afterEarning = document.getElementById('afterEarning');
+        const currentEarning = document.getElementById('currentEarning');
+        const todayEarningEl = document.getElementById('todayEarning');
+        const perSecondEl = document.getElementById('perSecond');
+        const progressBar = document.getElementById('progressBar');
+        const progressPercent = document.getElementById('progressPercent');
+        const progressDetail = document.getElementById('progressDetail');
+        const countdownEl = document.getElementById('countdown');
+        const motivationalTip = document.getElementById('motivationalTip');
+        const funFactRate = document.getElementById('funFactRate');
+        const funFactEquiv = document.getElementById('funFactEquiv');
+        const detailInfo = document.getElementById('detailInfo');
+        const toolbar = document.getElementById('toolbar');
+        const btnEdit = document.getElementById('btnEdit');
+        const btnMode = document.getElementById('btnMode');
+        const btnShare = document.getElementById('btnShare');
+        const btnReset = document.getElementById('btnReset');
+        const btnSetupSave = document.getElementById('btnSetupSave');
+        const overlay = document.getElementById('overlay');
+        const btnSheetSave = document.getElementById('btnSheetSave');
+        const toast = document.getElementById('toast');
+
+        // Setup inputs
+        const salarySetup = document.getElementById('salarySetup');
+        const daysSetup = document.getElementById('daysSetup');
+        const workStartSetup = document.getElementById('workStartSetup');
+        const workEndSetup = document.getElementById('workEndSetup');
+        const errorMsgSetup = document.getElementById('errorMsgSetup');
+        const timeErrorSetup = document.getElementById('timeErrorSetup');
+        const durationHintSetup = document.getElementById('durationHintSetup');
+
+        // Edit inputs
+        const salaryEdit = document.getElementById('salaryEdit');
+        const daysEdit = document.getElementById('daysEdit');
+        const workStartEdit = document.getElementById('workStartEdit');
+        const workEndEdit = document.getElementById('workEndEdit');
+        const errorMsgEdit = document.getElementById('errorMsgEdit');
+        const timeErrorEdit = document.getElementById('timeErrorEdit');
+        const durationHintEdit = document.getElementById('durationHintEdit');
+
+        // State
+        let timer = null, perSecondRate = 0, isCompact = false;
+        let workStartMinutes = 9*60, workEndMinutes = 18*60, totalWorkSeconds = 0;
+        let config = { salary: '', days: '22', workStart: '09:00', workEnd: '18:00' };
+        const STORAGE_KEY = 'salary_calc_v2';
+        const weekDays = ['周日','周一','周二','周三','周四','周五','周六'];
+
+        // Utilities
+        function parseTime(t) { const p=t.split(':'); return parseInt(p[0])*60+parseInt(p[1]); }
+        function fmtTime(m) { return `${String(Math.floor(m/60)).padStart(2,'0')}:${String(m%60).padStart(2,'0')}`; }
+        function formatMoney(a) {
+            if (a>=10000) return a.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+            if (a>=100) return a.toFixed(2);
+            return a.toFixed(4);
+        }
+        function showToast(msg) { toast.textContent=msg; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'),2000); }
+
+        function updateDurationHint(startEl, endEl, hintEl, errEl) {
+            const s=startEl.value, e=endEl.value;
+            if(!s||!e){hintEl.textContent='请选择时间';errEl.classList.remove('show');return;}
+            const sM=parseTime(s), eM=parseTime(e);
+            if(eM<=sM){hintEl.textContent='';errEl.classList.add('show');return;}
+            errEl.classList.remove('show');
+            const diff=eM-sM, dH=Math.floor(diff/60), dM=diff%60;
+            hintEl.textContent=dM>0?`今日工作时长：${dH} 小时 ${dM} 分钟`:`今日工作时长：${dH} 小时`;
+        }
+
+        // Clock
+        function updateClock() {
+            const now=new Date();
+            currentTimeEl.textContent=`${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+            currentDateEl.textContent=`${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${weekDays[now.getDay()]}`;
+        }
+        updateClock(); setInterval(updateClock,1000);
+
+        // localStorage
+        function saveConfig() { localStorage.setItem(STORAGE_KEY, JSON.stringify(config)); }
+        function loadConfig() {
+            try { const r=localStorage.getItem(STORAGE_KEY); return r?JSON.parse(r):null; } catch(e){return null;}
+        }
+
+        // Validate & apply config
+        function applyConfig() {
+            const salary=parseFloat(config.salary), days=parseFloat(config.days)||22;
+            if(!salary||salary<=0) return false;
+            workStartMinutes=parseTime(config.workStart);
+            workEndMinutes=parseTime(config.workEnd);
+            if(workEndMinutes<=workStartMinutes) return false;
+            totalWorkSeconds=(workEndMinutes-workStartMinutes)*60;
+            perSecondRate=salary/(days*totalWorkSeconds);
+            return true;
+        }
+
+        // Start running
+        function startRunning() {
+            if(!applyConfig()) return;
+            setupPanel.style.display='none';
+            toolbar.style.display='flex';
+            perSecondEl.textContent=`每秒赚 ¥${perSecondRate.toFixed(4)}`;
+            updateFunFact();
+            if(timer) clearInterval(timer);
+            updateDisplay();
+            timer=setInterval(updateDisplay,200);
+            startBump();
+        }
+
+        // Bump animation
+        let bumpInterval=null;
+        function startBump() {
+            if(bumpInterval) clearInterval(bumpInterval);
+            bumpInterval=setInterval(()=>{
+                currentEarning.classList.add('bump');
+                if(todayEarningEl) todayEarningEl.classList.add('bump');
+                setTimeout(()=>{currentEarning.classList.remove('bump');if(todayEarningEl)todayEarningEl.classList.remove('bump');},150);
+            },1000);
+        }
+
+        // Display update
+        function updateDisplay() {
+            const now=new Date();
+            const nowM=now.getHours()*60+now.getMinutes(), nowS=nowM*60+now.getSeconds();
+            const startS=workStartMinutes*60, endS=workEndMinutes*60;
+
+            if(nowS<startS) {
+                workingPanel.classList.remove('show'); statusAfter.classList.remove('show'); statusBefore.classList.add('show');
+                const d=startS-nowS;
+                beforeCountdown.textContent=`距离开始赚钱还有 ${Math.floor(d/3600)}小时${Math.floor((d%3600)/60)}分钟${d%60}秒`;
+                return;
+            }
+            if(nowS>=endS) {
+                workingPanel.classList.remove('show'); statusBefore.classList.remove('show'); statusAfter.classList.add('show');
+                afterEarning.textContent=formatMoney(totalWorkSeconds*perSecondRate);
+                return;
+            }
+
+            statusBefore.classList.remove('show'); statusAfter.classList.remove('show'); workingPanel.classList.add('show');
+            const worked=nowS-startS, todayEarned=worked*perSecondRate;
+            currentEarning.textContent=formatMoney(todayEarned);
+            todayEarningEl.textContent=formatMoney(todayEarned);
+
+            const prog=Math.min((worked/totalWorkSeconds)*100,100);
+            progressBar.style.width=prog.toFixed(1)+'%';
+            progressPercent.textContent=prog.toFixed(1)+'%';
+
+            if(!isCompact) {
+                const wH=Math.floor(worked/3600),wM=Math.floor((worked%3600)/60);
+                const tH=Math.floor(totalWorkSeconds/3600),tM=Math.floor((totalWorkSeconds%3600)/60);
+                const tStr=tM>0?`${tH}小时${tM}分钟`:`${tH}小时`;
+                const wStr=wH>0?`${wH}小时${wM}分钟`:`${wM}分钟`;
+                progressDetail.textContent=`已工作 ${wStr} / ${tStr}`;
+            }
+
+            const rem=endS-nowS;
+            countdownEl.textContent=`⏰ 还剩 ${Math.floor(rem/3600)}小时${Math.floor((rem%3600)/60)}分钟${rem%60}秒`;
+
+            if(!isCompact) {
+                const mid=workStartMinutes+(workEndMinutes-workStartMinutes)/2;
+                if(nowM<mid-60) motivationalTip.textContent='加油，刚开始赚钱 💪';
+                else if(nowM<mid+60) motivationalTip.textContent='已经过半了，继续保持 ☕';
+                else motivationalTip.textContent='再坚持一下就下班 🏠';
+            }
+        }
+
+        function updateFunFact() {
+            const pm=perSecondRate*60;
+            funFactRate.textContent=`这一分钟赚了 ¥${pm.toFixed(2)}`;
+            const scenes=[
+                {t:0.5,s:'约等于 1 小口奶茶 ☕'},{t:1,s:'约等于 1 颗糖果 🍬'},{t:3,s:'约等于 1 瓶矿泉水 💧'},
+                {t:5,s:'约等于 1 个茶叶蛋 🥚'},{t:8,s:'约等于 1 杯便利店咖啡 ☕'},{t:15,s:'约等于 1 杯奶茶 🧋'},
+                {t:25,s:'约等于 1 份外卖 🍱'},{t:40,s:'约等于 1 杯星巴克 ⭐'},{t:60,s:'约等于 1 顿快餐 🍔'},
+                {t:100,s:'约等于 1 张电影票 🎬'},{t:200,s:'约等于 1 次打车 🚕'},{t:500,s:'约等于 1 件T恤 👕'},
+                {t:Infinity,s:'已经超过一顿大餐了 🥩'}
+            ];
+            let eq=scenes[scenes.length-1].s;
+            for(const sc of scenes){if(pm<=sc.t){eq=sc.s;break;}}
+            funFactEquiv.textContent=eq;
+        }
+
+        // Mode toggle
+        btnMode.addEventListener('click',()=>{
+            isCompact=!isCompact;
+            btnMode.textContent=isCompact?'详细':'简洁';
+            detailInfo.classList.toggle('hidden',isCompact);
+            progressDetail.classList.toggle('hidden',isCompact);
+            motivationalTip.classList.toggle('hidden',isCompact);
+        });
+
+        // Edit button
+        btnEdit.addEventListener('click',()=>{
+            salaryEdit.value=config.salary;
+            daysEdit.value=config.days;
+            workStartEdit.value=config.workStart;
+            workEndEdit.value=config.workEnd;
+            updateDurationHint(workStartEdit,workEndEdit,durationHintEdit,timeErrorEdit);
+            overlay.classList.add('show');
+        });
+
+        // Close overlay on background click
+        overlay.addEventListener('click',(e)=>{ if(e.target===overlay) overlay.classList.remove('show'); });
+
+        // Edit duration hint
+        workStartEdit.addEventListener('change',()=>updateDurationHint(workStartEdit,workEndEdit,durationHintEdit,timeErrorEdit));
+        workEndEdit.addEventListener('change',()=>updateDurationHint(workStartEdit,workEndEdit,durationHintEdit,timeErrorEdit));
+
+        // Save from edit sheet
+        btnSheetSave.addEventListener('click',()=>{
+            const salary=parseFloat(salaryEdit.value);
+            if(!salary||salary<=0){errorMsgEdit.classList.add('show');return;}
+            errorMsgEdit.classList.remove('show');
+            const ws=workStartEdit.value,we=workEndEdit.value;
+            if(!ws||!we){showToast('请选择时间');return;}
+            if(parseTime(we)<=parseTime(ws)){timeErrorEdit.classList.add('show');return;}
+            timeErrorEdit.classList.remove('show');
+            config.salary=salaryEdit.value;
+            config.days=daysEdit.value||'22';
+            config.workStart=ws;
+            config.workEnd=we;
+            saveConfig();
+            overlay.classList.remove('show');
+            startRunning();
+            showToast('已保存 ✓');
+        });
+
+        // Setup panel duration hint
+        workStartSetup.addEventListener('change',()=>updateDurationHint(workStartSetup,workEndSetup,durationHintSetup,timeErrorSetup));
+        workEndSetup.addEventListener('change',()=>updateDurationHint(workStartSetup,workEndSetup,durationHintSetup,timeErrorSetup));
+
+        // Setup save
+        btnSetupSave.addEventListener('click',()=>{
+            const salary=parseFloat(salarySetup.value);
+            if(!salary||salary<=0){errorMsgSetup.classList.add('show');salarySetup.focus();return;}
+            errorMsgSetup.classList.remove('show');
+            const ws=workStartSetup.value,we=workEndSetup.value;
+            if(!ws||!we){showToast('请选择时间');return;}
+            if(parseTime(we)<=parseTime(ws)){timeErrorSetup.classList.add('show');return;}
+            timeErrorSetup.classList.remove('show');
+            config.salary=salarySetup.value;
+            config.days=daysSetup.value||'22';
+            config.workStart=ws;
+            config.workEnd=we;
+            saveConfig();
+            startRunning();
+        });
+
+        // Share
+        btnShare.addEventListener('click',()=>{
+            const now=new Date();
+            const dateStr=`${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 ${weekDays[now.getDay()]}`;
+            const todayText=currentEarning.textContent||afterEarning.textContent;
+            const text=`📊 今日打工进度播报\n📅 ${dateStr}\n💰 今天已赚：¥${todayText}\n⏱️ 每秒收入：¥${perSecondRate.toFixed(4)}\n—— 来自「实时工资计算器」`;
+            if(navigator.clipboard){navigator.clipboard.writeText(text).then(()=>showToast('已复制，可以发给朋友了 😎'));}
+            else{const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();document.execCommand('copy');document.body.removeChild(ta);showToast('已复制，可以发给朋友了 😎');}
+        });
+
+        // Reset
+        btnReset.addEventListener('click',()=>{
+            if(timer){clearInterval(timer);timer=null;}
+            if(bumpInterval){clearInterval(bumpInterval);bumpInterval=null;}
+            localStorage.removeItem(STORAGE_KEY);
+            workingPanel.classList.remove('show');statusBefore.classList.remove('show');statusAfter.classList.remove('show');
+            toolbar.style.display='none';
+            setupPanel.style.display='block';
+            config={salary:'',days:'22',workStart:'09:00',workEnd:'18:00'};
+            salarySetup.value='';daysSetup.value='22';workStartSetup.value='09:00';workEndSetup.value='18:00';
+            updateDurationHint(workStartSetup,workEndSetup,durationHintSetup,timeErrorSetup);
+        });
+
+        // Init: load saved config or show setup
+        const saved=loadConfig();
+        if(saved && saved.salary) {
+            config=saved;
+            startRunning();
+        } else {
+            setupPanel.style.display='block';
+            updateDurationHint(workStartSetup,workEndSetup,durationHintSetup,timeErrorSetup);
+        }
+    })();
+    </script>
+</body>
+</html>
